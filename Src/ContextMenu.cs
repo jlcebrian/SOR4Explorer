@@ -33,7 +33,7 @@ namespace SOR4Explorer
             }
         }
 
-        public static void SaveTextures(TextureLibrary library, IEnumerable<TextureInfo> files, bool useBaseFolder = false, IProgress<float> progress = null)
+        public static void SaveTextures(TextureLibrary library, IEnumerable<TextureInfo> files, bool useBaseFolder = false, IProgress<ImageOpProgress> progress = null)
         {
             var fbd = new FolderBrowserDialog()
             {
@@ -62,7 +62,7 @@ namespace SOR4Explorer
         }
 
         public static ContextMenuStrip FromImages(TextureLibrary library, IEnumerable<TextureInfo> info, 
-            bool useBaseFolder = false, IProgress<float> progress = null)
+            bool useBaseFolder = false, IProgress<ImageOpProgress> progress = null)
         {
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add($"&Save {info.Count()} images as...", null, 

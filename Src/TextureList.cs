@@ -38,7 +38,7 @@ namespace SOR4Explorer
                 {
                     items.Add(new TextureInfo()
                     {
-                        name = reader.ReadString(),
+                        name = reader.ReadString().Replace('/', Path.DirectorySeparatorChar),
                         offset = reader.ReadUInt32(),
                         flags = reader.ReadUInt32(),
                         length = reader.ReadUInt32(),

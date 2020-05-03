@@ -11,8 +11,11 @@ namespace SOR4Explorer
 {
     public partial class ExplorerForm : Form
     {
-        private readonly TextureLibrary textureLibrary = new TextureLibrary();
+        private readonly TextureLibrary library = new TextureLibrary();
         private readonly Timer timer;
+        
+        private Image folderIcon;
+        private Image folderIconSmall;
 
         #region Initialization and components
 
@@ -22,6 +25,7 @@ namespace SOR4Explorer
         private Panel dragInstructions;
         private Label instructionsLabel;
         private StatusStrip statusBar;
+        private ToolStripStatusLabel statusLabel;
         private ToolStripProgressBar progressBar;
 
         public ExplorerForm()
@@ -40,6 +44,12 @@ namespace SOR4Explorer
         {
             SuspendLayout();
 
+            // Load program icon and other images
+            var assembly = typeof(Program).Assembly;
+            Icon = new Icon(assembly.GetManifestResourceStream("SOR4Explorer.Images.SOR4Explorer.ico"));
+            folderIcon = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.FolderIcon.png"));
+            folderIconSmall = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.FolderIconSmall.png"));
+
             //
             // statusBar
             //
@@ -50,7 +60,7 @@ namespace SOR4Explorer
                 SizingGrip = true,
                 Stretch = true
             };
-            statusBar.Items.Add(new ToolStripStatusLabel() { Spring = true, Text = "Ready", TextAlign = ContentAlignment.MiddleLeft });
+            statusBar.Items.Add(statusLabel = new ToolStripStatusLabel() { Spring = true, Text = "Ready", TextAlign = ContentAlignment.MiddleLeft });
             statusBar.Items.Add(progressBar = new ToolStripProgressBar());
             progressBar.Visible = false;
 
@@ -65,7 +75,7 @@ namespace SOR4Explorer
                 Name = "splitContainer",
                 FixedPanel = FixedPanel.Panel1,
                 Size = new Size(1422, 1006),
-                SplitterDistance = 350,
+                SplitterDistance = 450,
                 TabIndex = 0,
                 Visible = false,
             };
@@ -90,10 +100,15 @@ namespace SOR4Explorer
                 TabIndex = 0,
                 Padding = new Padding(5),
                 ItemHeight = 40,
-                FullRowSelect = true
+                FullRowSelect = true,
+                HideSelection = false,
+                DrawMode = TreeViewDrawMode.OwnerDrawText
             };
+            folderTreeView.ImageList = new ImageList { ImageSize = new Size(32, 20) };
+            folderTreeView.ImageList.Images.Add(folderIconSmall);
             folderTreeView.AfterSelect += FolderTreeView_AfterSelect;
             folderTreeView.NodeMouseClick += FolderTreeView_MouseClick;
+            folderTreeView.DrawNode += FolderTreeView_DrawNode;
             splitContainer.Panel1.Controls.Add(folderTreeView);
 
             // 
@@ -139,7 +154,7 @@ namespace SOR4Explorer
             // 
             AutoScaleDimensions = new SizeF(12F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(1422, 1006);
+            ClientSize = new Size(1522, 1006);
             Controls.Add(statusBar);
             Controls.Add(splitContainer);
             Controls.Add(dragInstructions);
@@ -147,10 +162,6 @@ namespace SOR4Explorer
             Text = "SOR4 Explorer";
             DoubleBuffered = true;
             AllowDrop = true;
-
-            var assembly = typeof(Program).Assembly;
-            Stream resource = assembly.GetManifestResourceStream("SOR4Explorer.Images.SOR4Explorer.ico");
-            Icon = new Icon(resource);
 
             DragDrop += ExplorerForm_DragDrop;
             DragEnter += ExplorerForm_DragEnter;
@@ -186,7 +197,7 @@ namespace SOR4Explorer
                     MessageBoxIcon.Question
                     ) == DialogResult.Yes)
                 {
-                    textureLibrary.Clear();
+                    library.Clear();
                     imageListView.Clear();
                     folderTreeView.Nodes.Clear();
                     splitContainer.Visible = false;
@@ -250,7 +261,7 @@ namespace SOR4Explorer
                 var paths = ((string[])e.Data.GetData(DataFormats.FileDrop));
                 if (paths.Length == 1 && Directory.Exists(paths[0]))
                 {
-                    if (CheckInstallationDirectory(paths[0]))
+                    if (CheckInstallation(paths[0]))
                     {
                         imageListView.Clear();
                         folderTreeView.Nodes.Clear();
@@ -260,67 +271,33 @@ namespace SOR4Explorer
             }
         }
 
-        class DraggableImages : IDataObject
-        {
-            private readonly TextureLibrary library;
-            private readonly TextureInfo[] images;
-            private string[] temporaryFiles;
-
-            public DraggableImages(TextureLibrary library, TextureInfo[] images)
-            {
-                this.library = library;
-                this.images = images;
-            }
-
-            public object GetData(string format, bool autoConvert) => GetData(format);
-            public object GetData(Type format) => GetData(format.ToString());
-            public object GetData(string format)
-            {
-                if (temporaryFiles == null)
-                {
-                    temporaryFiles = new string[images.Length];
-                    for (int n = 0; n < images.Length; n++)
-                    {
-                        var name = Path.ChangeExtension(Path.GetFileName(images[n].name), ".png");
-                        var path = Path.Combine(Path.GetTempPath(), name);
-                        var image = library.LoadTexture(images[n]);
-                        image.Save(path, ImageFormat.Png);
-                        temporaryFiles[n] = path;
-                    }
-                }
-                return temporaryFiles;
-            }
-
-            public bool GetDataPresent(string format, bool autoConvert) => GetDataPresent(format);
-            public bool GetDataPresent(string format) => format == DataFormats.FileDrop || format == "SOR4Explorer";
-            public bool GetDataPresent(Type format) => false;
-
-            public string[] GetFormats(bool autoConvert) => GetFormats();
-            public string[] GetFormats() => new string[] { DataFormats.FileDrop };
-
-            public void SetData(string format, bool autoConvert, object data) { }
-            public void SetData(string format, object data) { }
-            public void SetData(Type format, object data) { }
-            public void SetData(object data) { }
-        }
-
         private void ImageListView_ItemDrag(object sender, ItemDragEventArgs ev)
         {
             if (ev.Button == MouseButtons.Left)
             {
-                var images = imageListView.SelectedItems.Cast<ListViewItem>().Select(n => ((TextureInfo)n.Tag)).ToArray();
+                var images = imageListView.SelectedItems.Cast<ListViewItem>().Where(n => n.Tag is TextureInfo).Select(n => ((TextureInfo)n.Tag)).ToArray();
                 if (images.Length > 0)
-                    imageListView.DoDragDrop(new DraggableImages(textureLibrary, images), DragDropEffects.Copy);
+                    imageListView.DoDragDrop(new DraggableImages(library, images), DragDropEffects.Copy);
             }
         }
 
         private void ImageListView_DoubleClick(object sender, EventArgs e)
         {
-            foreach (ListViewItem item in imageListView.SelectedItems)
+            if (imageListView.SelectedItems.Count == 1)
             {
-                var info = (TextureInfo)item.Tag;
-                var image = textureLibrary.LoadTexture(info);
-                new ImagePreviewForm(image, info.name).Show();
+                var item = imageListView.SelectedItems[0];
+                if (item.Tag is string path)
+                {
+                    var node = folderTreeView.SelectedNode;
+                    var child = node.Nodes.Cast<TreeNode>().FirstOrDefault(n => n.Name == path);
+                    if (child != null)
+                        folderTreeView.SelectedNode = child;
+                }
+                else if (item.Tag is TextureInfo info)
+                {
+                    var image = library.LoadTexture(info);
+                    new ImagePreviewForm(image, info.name).Show();
+                }
             }
         }
 
@@ -330,37 +307,44 @@ namespace SOR4Explorer
             {
                 if (imageListView.SelectedItems.Count == 1)
                 {
-                    var info = (TextureInfo)(imageListView.SelectedItems[0].Tag);
-                    var contextMenu = ContextMenu.FromImage(textureLibrary, info);
-                    contextMenu.Show(imageListView, e.Location);
+                    switch (imageListView.SelectedItems[0].Tag)
+                    {
+                        case TextureInfo info:
+                            ContextMenu.FromImage(library, info).Show(imageListView, e.Location);
+                            break;
+                        case string path:
+                            var images = library.GetAllTextures(path);
+                            ContextMenu.FromImages(library, images, true, SaveProgress()).Show(imageListView, e.Location);
+                            break;
+                    }
                 }
                 else if (imageListView.SelectedItems.Count > 1)
                 {
                     var images = imageListView.SelectedItems.Cast<ListViewItem>().Select(n => (TextureInfo)n.Tag).ToList();
-                    var contextMenu = ContextMenu.FromImages(textureLibrary, images, progress: SaveProgress(images.Count));
+                    var contextMenu = ContextMenu.FromImages(library, images, progress: SaveProgress());
                     contextMenu.Show(imageListView, e.Location);
                 }
             }
         }
 
-        private Progress<float> SaveProgress(int imageCount)
+        private Progress<ImageOpProgress> SaveProgress()
         {
-            return new Progress<float>(t =>
+            return new Progress<ImageOpProgress>(t =>
             {
                 if (statusBar == null || statusBar.Items == null || statusBar.Items.Count < 1)
                     return;
 
-                var item = statusBar.Items[0];
-                int count = (int)(imageCount * t);
-                if (t == 1)
+                progressBar.Maximum = t.count;
+                progressBar.Value = t.processed;
+                
+                if (t.processed == t.count)
                 {
-                    item.Text = $"{imageCount} images saved";
+                    statusLabel.Text = $"{t.count} images saved";
                     progressBar.Visible = false;
                 }
                 else
                 {
-                    item.Text = $"Saving image {count}/{imageCount}";
-                    progressBar.Value = count;
+                    statusLabel.Text = $"Saving image {t.processed}/{t.count}";
                 }
             });
         }
@@ -371,55 +355,47 @@ namespace SOR4Explorer
             {
                 folderTreeView.SelectedNode = e.Node;
                 var folder = e.Node.Name;
-                var images = textureLibrary.GetAllTextures(folder);
+                var images = library.GetAllTextures(folder);
                 progressBar.Maximum = images.Count;
                 progressBar.Value = 0;
                 progressBar.Visible = true;
-                var contextMenu = ContextMenu.FromImages(textureLibrary, images, true, SaveProgress(images.Count));
-                contextMenu.Show(folderTreeView, e.Location);
+                ContextMenu.FromImages(library, images, true, SaveProgress()).Show(folderTreeView, e.Location);
             }
+        }
+
+        private void FolderTreeView_DrawNode(object sender, DrawTreeNodeEventArgs e)
+        {
+            var node = e.Node;
+            var treeView = e.Node.TreeView;
+            Font treeFont = node.NodeFont ?? treeView.Font;
+            var color = treeView.SelectedNode == node ? SystemColors.HighlightText : treeView.ForeColor;
+            if (treeView.SelectedNode == node)
+                e.Graphics.FillRectangle(treeView.Focused ? SystemBrushes.Highlight: Brushes.Gray, e.Bounds);
+            TextRenderer.DrawText(e.Graphics, node.Text, treeFont, e.Bounds, color, 
+                TextFormatFlags.GlyphOverhangPadding | TextFormatFlags.VerticalCenter);
         }
 
         private void FolderTreeView_AfterSelect(object sender, TreeViewEventArgs e)
         {
             var path = folderTreeView.SelectedNode.Name;
-            var imageList = imageListView.LargeImageList;
-            imageList.Images.Clear();
-
-            imageListView.Clear();
-            loadOps.Clear();
-
-            foreach (var list in textureLibrary.Lists.Values)
-            {
-                foreach (var info in list)
-                {
-                    if (Path.GetDirectoryName(info.name) == path)
-                    {
-                        var filename = Path.GetFileName(info.name);
-                        var listItem = imageListView.Items.Add(filename);
-                        listItem.Tag = info;
-                        loadOps.Enqueue(new ImageToLoad { listItem = listItem, info = info });
-                    }
-                }
-            }
-
-            statusBar.Items[0].Text = $"{(path == "" ? "Root":path)} folder ({textureLibrary.Count(path)} images in tree)";
+            FillImageList(path);
+            statusLabel.Text = $"{(path == "" ? "Root":path)} folder ({library.Count(path)} images in tree)";
         }
 
         private void ImageListView_SelectedIndexChanged(object sender, EventArgs e)
         {
             int count = imageListView.SelectedItems.Count;
             if (count > 0)
-                statusBar.Items[0].Text = $"{count} images selected";
+                statusLabel.Text = $"{count} images selected";
             else
-                statusBar.Items[0].Text = " ";
+                statusLabel.Text = " ";
         }
 
         #endregion
 
         #region Filling the folder tree
 
-        public bool CheckInstallationDirectory(string installationPath)
+        public bool CheckInstallation(string installationPath)
         {
             string dataFolder = Path.Combine(installationPath, "data");
             string texturesFile = Path.Combine(dataFolder, "textures");
@@ -441,7 +417,7 @@ namespace SOR4Explorer
 
         public void LoadTextureLists(string installationPath)
         {
-            if (textureLibrary.Load(installationPath) == false)
+            if (library.Load(installationPath) == false)
             {
                 MessageBox.Show(
                     "Please select a valid Streets of Rage 4 installation folder",
@@ -459,7 +435,7 @@ namespace SOR4Explorer
             var folderNodes = new Dictionary<string, TreeNode> {
                 [""] = folderTreeView.Nodes.Add("", "/")
             };
-            foreach (var list in textureLibrary.Lists.Values)
+            foreach (var list in library.Lists.Values)
             {
                 foreach (var item in list)
                 {
@@ -491,10 +467,45 @@ namespace SOR4Explorer
                 var path = Path.GetDirectoryName(folder);
                 var name = Path.GetFileName(folder);
                 var node = folderNodes.TryGetValue(path, out TreeNode parent) ?
-                    parent.Nodes.Add(folder, $" {name} ") :
-                    AddPathToTree(path).Nodes.Add(folder, $" {name} ");
+                    parent.Nodes.Add(folder, name) :
+                    AddPathToTree(path).Nodes.Add(folder, name);
+                node.ImageIndex = 0;
                 folderNodes[folder] = node;
                 return node;
+            }
+        }
+
+        #endregion
+
+        #region Filling the folder view
+
+        private void FillImageList(string path)
+        {
+            imageListView.LargeImageList.Images.Clear();
+            imageListView.LargeImageList.Images.Add(folderIcon);
+            imageListView.Clear();
+            loadOps.Clear();
+
+            foreach (var subfolder in library.GetSubfolders(path))
+            {
+                var subpath = Path.Combine(path, subfolder);
+                var listItem = imageListView.Items.Add($"{subfolder}\n({library.Count(subpath)} textures)");
+                listItem.Tag = subpath;
+                listItem.ImageIndex = 0;
+            }
+
+            foreach (var list in library.Lists.Values)
+            {
+                foreach (var info in list)
+                {
+                    if (Path.GetDirectoryName(info.name) == path)
+                    {
+                        var filename = Path.GetFileName(info.name);
+                        var listItem = imageListView.Items.Add(filename);
+                        listItem.Tag = info;
+                        loadOps.Enqueue(new ImageToLoad { listItem = listItem, info = info });
+                    }
+                }
             }
         }
 
@@ -518,7 +529,7 @@ namespace SOR4Explorer
 
         private void AddBackgroundLoadTask(ImageToLoad op)
         {
-            var data = textureLibrary.LoadTextureData(op.info);
+            var data = library.LoadTextureData(op.info);
             var task = Task.Run(() => {
                 var image = TextureLoader.Load(op.info, data);
                 Console.WriteLine($"Image {op.info.name} loaded");

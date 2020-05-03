@@ -11,8 +11,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Images\FolderIconSmall.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Images\FolderIcon.png" />
     <EmbeddedResource Include="Images\SOR4Explorer.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Images\FolderIconSmall.png" />
   </ItemGroup>
 
 </Project>
