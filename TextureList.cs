@@ -31,14 +31,14 @@ namespace SOR4Explorer
         public TextureList(string filename, string datafile)
         {
             var file = File.OpenRead(filename);
-            var reader = new BinaryReader(file);
+            var reader = new BinaryReader(file, Encoding.Unicode);
             try
             {
                 while (true)
                 {
                     items.Add(new TextureInfo()
                     {
-                        name = ReadWideString(reader),
+                        name = reader.ReadString(),
                         offset = reader.ReadUInt32(),
                         flags = reader.ReadUInt32(),
                         length = reader.ReadUInt32(),
@@ -50,32 +50,5 @@ namespace SOR4Explorer
             {
             }
         }
-
-        /// <summary>
-        /// Strings are stored as wide (2 bytes per character) strings, with a 7-bit encoded length
-        /// </summary>
-        /// <returns></returns>
-        private static string ReadWideString(BinaryReader reader)
-        {
-            int length = 0;
-            int rot = 0;
-            byte value;
-            do
-            {
-                value = reader.ReadByte();
-                length += (value & 0x7F) << rot;
-                rot += 7;
-            }
-            while ((value & 0x80) != 0);
-
-            StringBuilder builder = new StringBuilder(length / 2);
-            while (length > 0)
-            {
-                builder.Append((char)reader.ReadUInt16());
-                length -= 2;
-            }
-            return builder.ToString();
-        }
-
     }
 }
