@@ -4,18 +4,15 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>netcoreapp5.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
-    <ApplicationIcon>SOR4Explorer.ico</ApplicationIcon>
+    <ApplicationIcon>Images\SOR4Explorer.ico</ApplicationIcon>
     <RuntimeIdentifier>win10-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishTrimmed>true</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="SOR4Explorer.ico" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="SOR4Explorer.ico" />
+    <EmbeddedResource Include="Images\FolderIcon.png" />
+    <EmbeddedResource Include="Images\SOR4Explorer.ico" />
   </ItemGroup>
 
 </Project>

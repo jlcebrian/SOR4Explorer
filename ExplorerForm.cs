@@ -149,7 +149,7 @@ namespace SOR4Explorer
             AllowDrop = true;
 
             var assembly = typeof(Program).Assembly;
-            Stream resource = assembly.GetManifestResourceStream("SOR4Explorer.SOR4Explorer.ico");
+            Stream resource = assembly.GetManifestResourceStream("SOR4Explorer.Images.SOR4Explorer.ico");
             Icon = new Icon(resource);
 
             DragDrop += ExplorerForm_DragDrop;
