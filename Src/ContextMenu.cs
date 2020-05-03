@@ -13,14 +13,6 @@ namespace SOR4Explorer
 {
     static class ContextMenu
     {
-        private static string GetCommonPath(IEnumerable<string> paths)
-        {
-            string path = paths.Aggregate((a, b) => a.Length > b.Length ? a : b);
-            while (path != "" && paths.All(n => n.StartsWith(path)) == false)
-                path = Path.GetDirectoryName(path).Replace('\\', '/');
-            return path;
-        }
-
         private static void SaveTexture(string name, Bitmap image)
         {
             SaveFileDialog sfd = new SaveFileDialog
@@ -50,41 +42,7 @@ namespace SOR4Explorer
                 Description = "Destination folder"
             };
             if (fbd.ShowDialog() == DialogResult.OK)
-            {
-                string basePath = GetCommonPath(files.Select(n => n.name));
-                if (useBaseFolder && basePath != null)
-                    basePath = Path.GetDirectoryName(basePath);
-                int savedCount = 0;
-                int count = files.Count();
-                Task.Run(() =>
-                {
-                    Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
-                    Parallel.ForEach(files,
-                    new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount-1 },
-                    info =>
-                    {
-                        try
-                        {
-                            var image = library.LoadTexture(info);
-                            if (image != null)
-                            {
-                                var path = basePath?.Length > 0 ? Path.GetRelativePath(basePath, info.name) : info.name;
-                                var destinationPath = Path.Combine(fbd.SelectedPath, path);
-                                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
-                                image.Save(Path.ChangeExtension(destinationPath, ".png"), ImageFormat.Png);
-                                Interlocked.Increment(ref savedCount);
-                                if (progress != null)
-                                    progress.Report((float)savedCount / count);
-                            }
-                        } 
-                        catch(Exception)
-                        {
-                        }
-                    });
-                    if (savedCount < count)
-                        progress.Report(1.0f);
-                });
-            }
+                library.SaveTextures(fbd.SelectedPath, files, useBaseFolder, progress);
         }
 
         public static ContextMenuStrip FromImage(TextureLibrary library, TextureInfo info)

@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SOR4Explorer
 {
@@ -59,6 +62,51 @@ namespace SOR4Explorer
         public Bitmap LoadTexture(TextureInfo textureInfo)
         {
             return TextureLoader.Load(textureInfo, LoadTextureData(textureInfo));
+        }
+
+        public void SaveTextures(string destination, IEnumerable<TextureInfo> files, bool useBaseFolder, IProgress<float> progress)
+        {
+            string basePath = GetCommonPath(files.Select(n => n.name));
+            if (useBaseFolder && basePath != null)
+                basePath = Path.GetDirectoryName(basePath);
+            int savedCount = 0;
+            int count = files.Count();
+            Task.Run(() =>
+            {
+                Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+                Parallel.ForEach(files,
+                new ParallelOptions() { MaxDegreeOfParallelism = Environment.ProcessorCount - 1 },
+                info =>
+                {
+                    try
+                    {
+                        var image = LoadTexture(info);
+                        if (image != null)
+                        {
+                            var path = basePath?.Length > 0 ? Path.GetRelativePath(basePath, info.name) : info.name;
+                            var destinationPath = Path.Combine(destination, path);
+                            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath));
+                            image.Save(Path.ChangeExtension(destinationPath, ".png"), ImageFormat.Png);
+                            Interlocked.Increment(ref savedCount);
+                            if (progress != null)
+                                progress.Report((float)savedCount / count);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                    }
+                });
+                if (savedCount < count)
+                    progress.Report(1.0f);
+            });
+
+            static string GetCommonPath(IEnumerable<string> paths)
+            {
+                string path = paths.Aggregate((a, b) => a.Length > b.Length ? a : b);
+                while (path != "" && paths.All(n => n.StartsWith(path)) == false)
+                    path = Path.GetDirectoryName(path).Replace('\\', '/');
+                return path;
+            }
         }
 
         public List<TextureInfo> GetAllTextures(string folder)
