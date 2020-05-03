@@ -98,13 +98,16 @@ namespace SOR4Explorer
                 Name = "folderTreeView",
                 Size = new Size(474, 1006),
                 TabIndex = 0,
-                Padding = new Padding(5),
                 ItemHeight = 40,
                 FullRowSelect = true,
                 HideSelection = false,
-                DrawMode = TreeViewDrawMode.OwnerDrawText
+                DrawMode = TreeViewDrawMode.OwnerDrawText,
+                ImageList = new ImageList
+                {
+                    ImageSize = new Size(32, 20),
+                    ColorDepth = ColorDepth.Depth32Bit
+                }
             };
-            folderTreeView.ImageList = new ImageList { ImageSize = new Size(32, 20) };
             folderTreeView.ImageList.Images.Add(folderIconSmall);
             folderTreeView.AfterSelect += FolderTreeView_AfterSelect;
             folderTreeView.NodeMouseClick += FolderTreeView_MouseClick;
@@ -155,8 +158,8 @@ namespace SOR4Explorer
             AutoScaleDimensions = new SizeF(12F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1522, 1006);
-            Controls.Add(statusBar);
             Controls.Add(splitContainer);
+            Controls.Add(statusBar);
             Controls.Add(dragInstructions);
             Name = "ExplorerForm";
             Text = "SOR4 Explorer";
