@@ -182,6 +182,12 @@ namespace SOR4Explorer
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            if (keyData == (Keys.Control | Keys.S))
+            {
+                library.SaveChanges();
+                FillImageList(folderTreeView.SelectedNode.Name);
+            }
+
             if (keyData == (Keys.Control | Keys.E) || keyData  == (Keys.Control | Keys.A))
             {
                 foreach (ListViewItem item in imageListView.Items)
@@ -254,6 +260,8 @@ namespace SOR4Explorer
                 var paths = ((string[])e.Data.GetData(DataFormats.FileDrop));
                 if (paths.Length == 1 && Directory.Exists(paths[0]))
                     e.Effect = DragDropEffects.Link;
+                else
+                    e.Effect = DragDropEffects.Move;
             }
         }
 
@@ -262,13 +270,72 @@ namespace SOR4Explorer
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
                 var paths = ((string[])e.Data.GetData(DataFormats.FileDrop));
-                if (paths.Length == 1 && Directory.Exists(paths[0]))
+                if (paths.Length == 1 && Directory.Exists(paths[0]) && IsInstallationFolder(paths[0]))
                 {
-                    if (CheckInstallation(paths[0]))
+                    imageListView.Clear();
+                    folderTreeView.Nodes.Clear();
+                    LoadTextureLists(paths[0]);
+                    return;
+                }
+                if (instructionsLabel.Visible)
+                {
+                    BringToFront();
+                    MessageBox.Show(
+                        "Please select a valid Streets of Rage 4 installation folder",
+                        "Data folder not found",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error,
+                        MessageBoxDefaultButton.Button1,
+                        MessageBoxOptions.DefaultDesktopOnly);
+                    return;
+                }
+                
+                var root = folderTreeView.SelectedNode.Name;
+                foreach (var path in paths)
+                {
+                    if (File.Exists(path))
                     {
-                        imageListView.Clear();
-                        folderTreeView.Nodes.Clear();
-                        LoadTextureLists(paths[0]);
+                        string name = Path.GetFileNameWithoutExtension(path);
+                        string filename = Path.Combine(root, name);
+                        if (library.Contains(filename) == false)
+                        {
+                            MessageBox.Show(
+                                this,
+                                $"{filename}\ndoes not exist in the textures library",
+                                "Invalid texture replacement",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error,
+                                MessageBoxDefaultButton.Button1);
+                            break;
+                        }
+
+                        Bitmap image;
+                        try
+                        {
+                            image = new Bitmap(path);
+                        }
+                        catch (Exception exception)
+                        {
+                            MessageBox.Show(
+                                this,
+                                $"Unable to open image {path}\n{exception.Message}",
+                                "Invalid image",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error,
+                                MessageBoxDefaultButton.Button1);
+                            return;
+                        }
+                        library.AddChange(filename, image);
+
+                        foreach (ListViewItem item in imageListView.Items)
+                        {
+                            if (item.Tag is TextureInfo info && info.name == filename)
+                            {
+                                imageListView.LargeImageList.Images.Add(TextureLoader.ScaledImage(image));
+                                item.ImageIndex = imageListView.LargeImageList.Images.Count - 1;
+                                item.Font = new Font(item.Font, FontStyle.Bold);
+                            }
+                        }
                     }
                 }
             }
@@ -316,7 +383,7 @@ namespace SOR4Explorer
                             ContextMenu.FromImage(library, info).Show(imageListView, e.Location);
                             break;
                         case string path:
-                            var images = library.GetAllTextures(path);
+                            var images = library.GetTextures(path);
                             ContextMenu.FromImages(library, images, true, SaveProgress()).Show(imageListView, e.Location);
                             break;
                     }
@@ -358,7 +425,7 @@ namespace SOR4Explorer
             {
                 folderTreeView.SelectedNode = e.Node;
                 var folder = e.Node.Name;
-                var images = library.GetAllTextures(folder);
+                var images = library.GetTextures(folder);
                 progressBar.Maximum = images.Count;
                 progressBar.Value = 0;
                 progressBar.Visible = true;
@@ -382,7 +449,7 @@ namespace SOR4Explorer
         {
             var path = folderTreeView.SelectedNode.Name;
             FillImageList(path);
-            statusLabel.Text = $"{(path == "" ? "Root":path)} folder ({library.Count(path)} images in tree)";
+            statusLabel.Text = $"{(path == "" ? "Root":path)} folder ({library.CountTextures(path)} images in tree)";
         }
 
         private void ImageListView_SelectedIndexChanged(object sender, EventArgs e)
@@ -398,24 +465,12 @@ namespace SOR4Explorer
 
         #region Filling the folder tree
 
-        public bool CheckInstallation(string installationPath)
+        public bool IsInstallationFolder(string installationPath)
         {
             string dataFolder = Path.Combine(installationPath, "data");
             string texturesFile = Path.Combine(dataFolder, "textures");
             string tableFile = Path.Combine(dataFolder, "texture_table");
-            if (Directory.Exists(dataFolder) == false || File.Exists(texturesFile) == false || File.Exists(tableFile) == false)
-            {
-                BringToFront();
-                MessageBox.Show(
-                    "Please select a valid Streets of Rage 4 installation folder",
-                    "Data folder not found",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error,
-                    MessageBoxDefaultButton.Button1,
-                    MessageBoxOptions.DefaultDesktopOnly);
-                return false;
-            }
-            return true;
+            return Directory.Exists(dataFolder) && File.Exists(texturesFile) && File.Exists(tableFile);
         }
 
         public void LoadTextureLists(string installationPath)
@@ -492,22 +547,26 @@ namespace SOR4Explorer
             foreach (var subfolder in library.GetSubfolders(path))
             {
                 var subpath = Path.Combine(path, subfolder);
-                var listItem = imageListView.Items.Add($"{subfolder}\n({library.Count(subpath)} textures)");
+                var listItem = imageListView.Items.Add($"{subfolder}\n({library.CountTextures(subpath)} textures)");
                 listItem.Tag = subpath;
                 listItem.ImageIndex = 0;
             }
 
+            List<TextureInfo> images = new List<TextureInfo>();
             foreach (var list in library.Lists.Values)
+                images.AddRange(list.Where(n => n.changed == false && Path.GetDirectoryName(n.name) == path));
+            images.Sort((a, b) => a.name.CompareTo(b.name));
+
+            foreach (var info in images)
             {
-                foreach (var info in list)
+                if (Path.GetDirectoryName(info.name) == path)
                 {
-                    if (Path.GetDirectoryName(info.name) == path)
-                    {
-                        var filename = Path.GetFileName(info.name);
-                        var listItem = imageListView.Items.Add(filename);
-                        listItem.Tag = info;
-                        loadOps.Enqueue(new ImageToLoad { listItem = listItem, info = info });
-                    }
+                    var filename = Path.GetFileName(info.name);
+                    var listItem = imageListView.Items.Add(filename);
+                    listItem.Tag = info;
+                    if (info.datafile == null)
+                        listItem.Font = new Font(listItem.Font, FontStyle.Bold);
+                    loadOps.Enqueue(new ImageToLoad { listItem = listItem, info = info });
                 }
             }
         }
@@ -534,7 +593,7 @@ namespace SOR4Explorer
         {
             var data = library.LoadTextureData(op.info);
             var task = Task.Run(() => {
-                var image = TextureLoader.Load(op.info, data);
+                var image = data == null ? library.LoadTexture(op.info) : TextureLoader.Load(op.info, data);
                 Console.WriteLine($"Image {op.info.name} loaded");
                 return new Result { image = image, listItem = op.listItem };
             });

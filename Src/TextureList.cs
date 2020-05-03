@@ -6,15 +6,6 @@ using System.Text;
 
 namespace SOR4Explorer
 {
-    public struct TextureInfo
-    {
-        public string name;
-        public UInt32 offset;
-        public UInt32 flags;
-        public UInt32 length;
-        public string datafile;
-    }
-
     /// <summary>
     /// Parses a texture file list from the SOR4 folder. The texture list is a binary database with
     /// the full path, offset and compressed length of every texture inside the related data file.
@@ -27,6 +18,11 @@ namespace SOR4Explorer
         IEnumerator IEnumerable.GetEnumerator() => items.GetEnumerator();
 
         private readonly List<TextureInfo> items = new List<TextureInfo>();
+
+        public void Add(TextureInfo item)
+        {
+            items.Add(item);
+        }
 
         public TextureList(string filename, string datafile)
         {

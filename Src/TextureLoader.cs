@@ -9,7 +9,7 @@ using System.Text;
 namespace SOR4Explorer
 {
     /// <summary>
-    /// This class contains the logic needed to ucompress textures from the data file.
+    /// This class contains the logic needed to compress and uncompress data file textures.
     /// Textures are compressed by a headerless ZLib stream (using CLR) and then stored
     /// in XNB format. Although the XNB format is complex, fortunately all the SOR4 textures
     /// are stored very simply: they are all an uncompressed canonical ARGB32 format
@@ -17,6 +17,65 @@ namespace SOR4Explorer
     /// </summary>
     static class TextureLoader
     {
+        const string SerializationClass = "Microsoft.Xna.Framework.Content.Texture2DReader";
+
+        public static byte[] Compress(Bitmap image)
+        {
+            int width = image.Width;
+            int height = image.Height;
+
+            MemoryStream output = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(output);
+
+            writer.Write(Encoding.ASCII.GetBytes("XNBw"));      // Signature
+            writer.Write((byte)5);                              // Version code
+            writer.Write((byte)0);
+            writer.Write((UInt32)0);                            // File size placeholder
+            writer.Write((byte)1);                              // Item count
+            writer.Write(SerializationClass);
+            writer.Write((UInt32)0);                            // Always 0
+            writer.Write((UInt16)256);                          // Always 256
+            writer.Write((UInt32)0);                            // Texture format (0 = canonical)
+            writer.Write((UInt32)image.Width);
+            writer.Write((UInt32)image.Height);
+            writer.Write((UInt32)1);                            // Mipmap count
+            writer.Write((UInt32)image.Width*image.Height*4);   // Uncompressed size
+
+            var imageData = image.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            byte[] line = new byte[width * 4];
+            for (int y = 0; y < height; y++)
+            {
+                Marshal.Copy(imageData.Scan0 + imageData.Stride * y, line, 0, width * 4);
+                for (int x = 0; x < width * 4; x += 4)
+                {
+                    byte b = line[x + 0];
+                    line[x + 0] = line[x + 2];
+                    line[x + 2] = b;
+
+                    // Premultiply alpha values
+                    line[x + 0] = (byte)(line[x + 0] * line[x + 3] / 255);
+                    line[x + 1] = (byte)(line[x + 1] * line[x + 3] / 255);
+                    line[x + 2] = (byte)(line[x + 2] * line[x + 3] / 255);
+                }
+                writer.Write(line);
+            }
+            image.UnlockBits(imageData);
+
+            // Update the file size
+            var fileSize = output.Position;
+            output.Seek(6, SeekOrigin.Begin);
+            writer.Write((UInt32)fileSize);
+            output.Position = 0;
+
+            // Compress the texture
+            MemoryStream compressedOutput = new MemoryStream();
+            var compressionStream = new DeflateStream(compressedOutput, CompressionMode.Compress);
+            output.CopyTo(compressionStream);
+            compressionStream.Flush();
+
+            return compressedOutput.ToArray();
+        }
+
         public static Bitmap Load(TextureInfo textureInfo, byte[] data)
         {
             var filename = Path.GetFileName(textureInfo.name);
@@ -68,23 +127,28 @@ namespace SOR4Explorer
 
             // Check serialization class name
             string classname = reader.ReadString();
-            if (classname != "Microsoft.Xna.Framework.Content.Texture2DReader")
+            if (classname != SerializationClass)
             {
                 Console.WriteLine($"{filename} uses an unknown class {classname}");
                 return null;
             }
-            _ = reader.ReadUInt32();            // Always 0
-            _ = reader.ReadUInt16();            // Always 256
+            var unknown0 = reader.ReadUInt32();            // Always 0
+            var unknown1 = reader.ReadUInt16();            // Always 256
 
             // Read texture header, check format
             uint format = reader.ReadUInt32();
             int width = reader.ReadInt32();
             int height = reader.ReadInt32();
-            _ = reader.ReadUInt32();            // Level count (for mipmaps)
-            _ = reader.ReadUInt32();            // Compression type (not supported)
+            int levelCount = reader.ReadInt32();           // Level count (for mipmaps)
+            int dataSize = reader.ReadInt32();             // Uncompressed data size
             if (format != 0)
             {
                 Console.WriteLine($"{filename} uses an unsupported format {format}");
+                return null;
+            }
+            if (dataSize != width*height*4)
+            {
+                Console.WriteLine($"{filename} has a wrong data size ({dataSize} instead of {width * height * 4})");
                 return null;
             }
 
@@ -101,6 +165,8 @@ namespace SOR4Explorer
                     byte b = line[x + 0];
                     line[x + 0] = line[x + 2];
                     line[x + 2] = b;
+                    if (line[x + 3] < line[x] || line[x + 3] < line[x + 1] || line[x + 3] < line[x + 2])
+                        Console.WriteLine($"{filename} has non-premultiplied alpha!");
                 }
                 Marshal.Copy(line, 0, ptr, width * 4);
                 ptr += bmpData.Stride;

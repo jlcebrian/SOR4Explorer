@@ -4,25 +4,96 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace SOR4Explorer
 {
-    struct ImageOpProgress
-    {
-        public int processed;
-        public int count;
-    };
-
     class TextureLibrary
     {
         public string RootPath { get; set; }
         public readonly Dictionary<string, TextureList> Lists = new Dictionary<string, TextureList>();
         public readonly Dictionary<string, FileStream> DataFiles = new Dictionary<string, FileStream>();
         public readonly HashSet<string> Folders = new HashSet<string>();
+        public readonly Dictionary<string, ImageChange> ImageChanges = new Dictionary<string, ImageChange>();
 
         private readonly Dictionary<string, int> ImageCountCache = new Dictionary<string, int>();
+
+        private string dataFolder;
+
+        public void AddChange (string path, Bitmap image)
+        {
+            foreach (var list in Lists.Values)
+            {
+                var item = list.FirstOrDefault(n => n.name == path);
+                if (item != null)
+                {
+                    ImageChanges[path] = new ImageChange()
+                    {
+                        datafile = item.datafile,
+                        image = image,
+                        path = path
+                    };
+                    item.changed = true;
+                    return;
+                }
+            }
+
+            Console.Write($"Warning: attempt to change file {path} which is not in the library");
+        }
+
+        public void CloseDatafiles()
+        {
+            foreach (var key in DataFiles.Keys.ToArray())
+            {
+                DataFiles[key].Close();
+                DataFiles[key] = null;
+            }
+        }
+
+        public void SaveChanges()
+        {
+            CloseDatafiles();
+
+            // Replaces textures by adding them to the end of the original file. This
+            // should make it possible to go back to the original library by truncating
+            // the data file and restoring the original texture list.
+
+            foreach (var entry in Lists)
+            {
+                var fileName = entry.Key.Replace("textures", "texture_table");
+                var list = entry.Value;
+
+                FileStream tableFile = File.Open(fileName, FileMode.Create);
+                var tableWriter = new BinaryWriter(tableFile, Encoding.Unicode);
+                foreach (var item in list)
+                {
+                    if (item.changed && ImageChanges.TryGetValue(item.name, out ImageChange change))
+                    {
+                        var compressedData = TextureLoader.Compress(change.image);
+                        var test = TextureLoader.Load(item, compressedData);
+                        if (test != null)
+                        {
+                            FileStream dataFileStream = File.OpenWrite(entry.Key);
+                            dataFileStream.Seek(0, SeekOrigin.End);
+                            item.offset = (uint)dataFileStream.Position;
+                            item.length = (uint)compressedData.Length;
+                            item.changed = false;
+                            dataFileStream.Write(compressedData);
+                            dataFileStream.Close();
+                        }
+                    }
+
+                    tableWriter.Write(item.name.Replace(Path.DirectorySeparatorChar, '/'));
+                    tableWriter.Write((UInt32)item.offset);
+                    tableWriter.Write((UInt32)0);
+                    tableWriter.Write((UInt32)item.length);
+                }
+                tableWriter.Close();
+                tableFile.Close();
+            }
+        }
 
         public bool Load(string installationPath)
         {
@@ -32,7 +103,8 @@ namespace SOR4Explorer
             try
             {
                 int fileIndex = 1;
-                string dataFolder = Path.Combine(installationPath, "data");
+                dataFolder = Path.Combine(installationPath, "data");
+
                 string texturesFile = Path.Combine(dataFolder, "textures");
                 string tableFile = Path.Combine(dataFolder, "texture_table");
                 while (File.Exists(texturesFile) && File.Exists(tableFile))
@@ -69,9 +141,13 @@ namespace SOR4Explorer
 
         public byte[] LoadTextureData(TextureInfo textureInfo)
         {
-            byte[] data = new byte[textureInfo.length];
+            if (textureInfo.datafile == null)
+                return null;
 
+            byte[] data = new byte[textureInfo.length];
             var datafile = DataFiles[textureInfo.datafile];
+            if (datafile == null)
+                datafile = DataFiles[textureInfo.datafile] = File.OpenRead(textureInfo.datafile);
             lock (datafile)    // Not needed?
             {
                 datafile.Seek(textureInfo.offset, SeekOrigin.Begin);
@@ -82,6 +158,9 @@ namespace SOR4Explorer
 
         public Bitmap LoadTexture(TextureInfo textureInfo)
         {
+            if (textureInfo.datafile == null)
+                return ImageChanges.TryGetValue(textureInfo.name, out ImageChange change) ? change.image : null;
+
             return TextureLoader.Load(textureInfo, LoadTextureData(textureInfo));
         }
 
@@ -127,16 +206,26 @@ namespace SOR4Explorer
             }
         }
 
-        public List<TextureInfo> GetAllTextures(string folder)
+        public List<TextureInfo> GetTextures(string folder)
         {
             List<TextureInfo> result = new List<TextureInfo>();
             folder = NormalizePath(folder);
             foreach (var list in Lists.Values)
-                result.AddRange(list.Where(item => item.name.StartsWith(folder)));
+                result.AddRange(list.Where(item => item.name.StartsWith(folder) && !item.changed));
             return result;
         }
 
-        public int Count()
+        public bool Contains(string path)
+        {
+            foreach (var list in Lists.Values)
+            {
+                if (list.Any(n => n.name == path))
+                    return true;
+            }
+            return false;
+        }
+
+        public int CountTextures()
         {
             if (ImageCountCache.ContainsKey(""))
                 return ImageCountCache[""];
@@ -144,7 +233,7 @@ namespace SOR4Explorer
             return ImageCountCache[""] = Lists.Values.Aggregate(0, (result, item) => result += item.Length);
         }
 
-        public int Count(string folder)
+        public int CountTextures(string folder)
         {
             folder = NormalizePath(folder);
             if (ImageCountCache.ContainsKey(folder))
