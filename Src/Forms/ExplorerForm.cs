@@ -12,8 +12,10 @@ namespace SOR4Explorer
     public partial class ExplorerForm : Form
     {
         private readonly TextureLibrary library = new TextureLibrary();
+        private readonly DataLibrary data = new DataLibrary();
         private readonly Timer timer;
-        
+        private LocalizationData localization;
+
         private Image folderIcon;
         private Image folderIconSmall;
 
@@ -489,6 +491,9 @@ namespace SOR4Explorer
                 statusBar.Visible = false;
                 return;
             }
+
+            data.Load(installationPath);
+            localization = data.Unserialize<LocalizationData>("localization");
 
             var folderNodes = new Dictionary<string, TreeNode> {
                 [""] = folderTreeView.Nodes.Add("", "/")

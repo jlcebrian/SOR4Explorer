@@ -9,10 +9,10 @@
 - Add a button to restore the textures to the original state
 - Close the datafiles after 1 second of inactivity (allow playing while app is running)
 
+GAME DATA
+- Show related SpriteData (tooltip?)
+
 FUTURE STUFF
 - Use an application data folder for settings, file backups, etc.
 - Install MODs from ZIPs (replace every texture in the zip file)
 - Show a 'mods' form with additional information about every mod
-- Reverse engineering of 'bigfile' contents
-- Extract IL assemblies from EXE file, probably needed for previous step
-- Alternatively: find hotspot/extra sprite info in bigfile, if present
