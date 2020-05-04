@@ -1,6 +1,4 @@
 
-- Add a main button/menu bar to the form
-- Add a 'save' button to the bar (no need to press Ctrl+S)
 - Alert the user if there are pending unsaved changes on exit
 - Add 'replace' options to image context menu
 - Allow dragging a folder containing multiple textures to change

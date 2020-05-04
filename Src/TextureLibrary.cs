@@ -72,17 +72,13 @@ namespace SOR4Explorer
                     if (item.changed && ImageChanges.TryGetValue(item.name, out ImageChange change))
                     {
                         var compressedData = TextureLoader.Compress(change.image);
-                        var test = TextureLoader.Load(item, compressedData);
-                        if (test != null)
-                        {
-                            FileStream dataFileStream = File.OpenWrite(entry.Key);
-                            dataFileStream.Seek(0, SeekOrigin.End);
-                            item.offset = (uint)dataFileStream.Position;
-                            item.length = (uint)compressedData.Length;
-                            item.changed = false;
-                            dataFileStream.Write(compressedData);
-                            dataFileStream.Close();
-                        }
+                        FileStream dataFileStream = File.OpenWrite(entry.Key);
+                        dataFileStream.Seek(0, SeekOrigin.End);
+                        item.offset = (uint)dataFileStream.Position;
+                        item.length = (uint)compressedData.Length;
+                        item.changed = false;
+                        dataFileStream.Write(compressedData);
+                        dataFileStream.Close();
                     }
 
                     tableWriter.Write(item.name.Replace(Path.DirectorySeparatorChar, '/'));
@@ -93,6 +89,8 @@ namespace SOR4Explorer
                 tableWriter.Close();
                 tableFile.Close();
             }
+
+            ImageChanges.Clear();
         }
 
         public bool Load(string installationPath)
@@ -246,6 +244,14 @@ namespace SOR4Explorer
             if (folder != "")
                 folder = Path.TrimEndingDirectorySeparator(folder) + Path.DirectorySeparatorChar;
             return folder;
+        }
+
+        public void DiscardChanges()
+        {
+            foreach (var list in Lists.Values)
+                foreach (var item in list)
+                    item.changed = false;
+            ImageChanges.Clear();
         }
 
         public void Clear()

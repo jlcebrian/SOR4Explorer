@@ -9,6 +9,41 @@ using System.Windows.Forms;
 
 namespace SOR4Explorer
 {
+    class ToolStripColorTable : ProfessionalColorTable
+    {
+        static readonly Color greyBackground = Color.FromArgb(48, 48, 48);
+
+        public override Color ButtonSelectedGradientBegin => greyBackground;
+        public override Color ButtonSelectedGradientEnd => greyBackground;
+        public override Color ButtonSelectedHighlight => greyBackground;
+        public override Color ButtonSelectedBorder => greyBackground;
+    }
+
+    class ToolStripCustomRenderer : ToolStripProfessionalRenderer
+    {
+        public ToolStripCustomRenderer() : base(new ToolStripColorTable())
+        {
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = Color.White;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderButtonBackground(ToolStripItemRenderEventArgs e)
+        {
+            base.OnRenderButtonBackground(e);
+            if (e.Item.Pressed)
+            {
+                Rectangle rc = new Rectangle(Point.Empty, e.Item.Size);
+                Color c = SystemColors.Highlight;
+                using SolidBrush brush = new SolidBrush(c);
+                e.Graphics.FillRectangle(brush, rc);
+            }
+        }
+    }
+
     public partial class ExplorerForm : Form
     {
         private readonly TextureLibrary library = new TextureLibrary();
@@ -18,6 +53,10 @@ namespace SOR4Explorer
 
         private Image folderIcon;
         private Image folderIconSmall;
+        private Image barsImage;
+        private Image trashImage;
+        private Image saveImage;
+        private Panel appContainer;
 
         #region Initialization and components
 
@@ -27,8 +66,12 @@ namespace SOR4Explorer
         private Panel dragInstructions;
         private Label instructionsLabel;
         private StatusStrip statusBar;
+        private ToolStrip toolStrip;
         private ToolStripStatusLabel statusLabel;
         private ToolStripProgressBar progressBar;
+        private ToolStripLabel changesLabel;
+        private ToolStripButton applyButton;
+        private ToolStripButton discardButton;
 
         public ExplorerForm()
         {
@@ -51,6 +94,20 @@ namespace SOR4Explorer
             Icon = new Icon(assembly.GetManifestResourceStream("SOR4Explorer.Images.SOR4Explorer.ico"));
             folderIcon = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.FolderIcon.png"));
             folderIconSmall = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.FolderIconSmall.png"));
+            barsImage = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.bars.png"));
+            saveImage = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.save.png"));
+            trashImage = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.trash.png"));
+
+            //
+            // appContainer
+            //
+            appContainer = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BorderStyle = BorderStyle.None,
+                Visible = false,
+            };
+            appContainer.SuspendLayout();
 
             //
             // statusBar
@@ -58,12 +115,69 @@ namespace SOR4Explorer
             statusBar = new StatusStrip()
             {
                 Dock = DockStyle.Bottom,
-                Size = new Size(400, 40),
+                Size = new Size(400, 32),
                 SizingGrip = true,
-                Stretch = true
+                Stretch = true,
+                AutoSize = false
             };
-            statusBar.Items.Add(statusLabel = new ToolStripStatusLabel() { Spring = true, Text = "Ready", TextAlign = ContentAlignment.MiddleLeft });
-            statusBar.Items.Add(progressBar = new ToolStripProgressBar());
+            statusBar.Items.Add(statusLabel = new ToolStripStatusLabel() { 
+                Spring = true, 
+                Text = "Ready", 
+                TextAlign = ContentAlignment.MiddleLeft 
+            });
+
+            //
+            // toolStrip
+            //
+            toolStrip = new ToolStrip()
+            {
+                AutoSize = false,
+                Stretch = true,
+                Dock = DockStyle.Top,
+                ForeColor = Color.White,
+                BackColor = Color.Black,
+                Size = new Size(400, 60),
+                Padding = new Padding(0),
+                GripStyle = ToolStripGripStyle.Hidden,
+                Renderer = new ToolStripCustomRenderer(),
+                CanOverflow = false,
+            };
+            toolStrip.Items.Add(new ToolStripButton("", barsImage)
+            {
+                Padding = new Padding(8, 0, 32, 0),
+                ImageScaling = ToolStripItemImageScaling.SizeToFit
+            });
+            toolStrip.Items.Add(progressBar = new ToolStripProgressBar()
+            {
+                Alignment = ToolStripItemAlignment.Right,
+                Size = new Size(200, 8),
+                Padding = new Padding(0, 0, 40, 0),
+            });
+            toolStrip.Items.Add(discardButton = new ToolStripButton("Discard", trashImage, (s,e) => DiscardChanges())
+            {
+                Alignment = ToolStripItemAlignment.Right,
+                AutoToolTip = false,
+                Padding = new Padding(16),
+                ImageAlign = ContentAlignment.MiddleRight,
+                Visible = false,
+            });
+            toolStrip.Items.Add(applyButton = new ToolStripButton("Apply", saveImage, (s,e) => ApplyChanges())
+            {
+                Alignment = ToolStripItemAlignment.Right,
+                AutoToolTip = false,
+                Padding = new Padding(16),
+                ImageAlign = ContentAlignment.MiddleRight,
+                Visible = false
+            });
+            toolStrip.Items.Add(changesLabel = new ToolStripLabel()
+            {
+                Alignment = ToolStripItemAlignment.Right,
+                TextAlign = ContentAlignment.MiddleRight,
+                AutoSize = false,
+                Size = new Size(400, 60),
+                Margin = new Padding(0, 0, 32, 0),
+                Text = "No changes",
+            });
             progressBar.Visible = false;
 
             // 
@@ -79,7 +193,6 @@ namespace SOR4Explorer
                 Size = new Size(1422, 1006),
                 SplitterDistance = 450,
                 TabIndex = 0,
-                Visible = false,
             };
             splitContainer.BeginInit();
             splitContainer.Panel1.SuspendLayout();
@@ -160,8 +273,10 @@ namespace SOR4Explorer
             AutoScaleDimensions = new SizeF(12F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1522, 1006);
-            Controls.Add(splitContainer);
-            Controls.Add(statusBar);
+            appContainer.Controls.Add(splitContainer);
+            appContainer.Controls.Add(statusBar);
+            appContainer.Controls.Add(toolStrip);
+            Controls.Add(appContainer);
             Controls.Add(dragInstructions);
             Name = "ExplorerForm";
             Text = "SOR4 Explorer";
@@ -175,6 +290,7 @@ namespace SOR4Explorer
             splitContainer.Panel2.ResumeLayout(false);
             splitContainer.EndInit();
             splitContainer.ResumeLayout(false);
+            appContainer.ResumeLayout(false);
             ResumeLayout(false);
         }
 
@@ -185,10 +301,7 @@ namespace SOR4Explorer
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (keyData == (Keys.Control | Keys.S))
-            {
-                library.SaveChanges();
-                FillImageList(folderTreeView.SelectedNode.Name);
-            }
+                ApplyChanges();
 
             if (keyData == (Keys.Control | Keys.E) || keyData  == (Keys.Control | Keys.A))
             {
@@ -211,8 +324,7 @@ namespace SOR4Explorer
                     library.Clear();
                     imageListView.Clear();
                     folderTreeView.Nodes.Clear();
-                    splitContainer.Visible = false;
-                    statusBar.Visible = false;
+                    appContainer.Visible = false;
                     dragInstructions.Visible = true;
                     Settings.InstallationPath = null;
                 }
@@ -328,6 +440,7 @@ namespace SOR4Explorer
                             return;
                         }
                         library.AddChange(filename, image);
+                        UpdateChangesLabel();
 
                         foreach (ListViewItem item in imageListView.Items)
                         {
@@ -399,28 +512,6 @@ namespace SOR4Explorer
             }
         }
 
-        private Progress<ImageOpProgress> SaveProgress()
-        {
-            return new Progress<ImageOpProgress>(t =>
-            {
-                if (statusBar == null || statusBar.Items == null || statusBar.Items.Count < 1)
-                    return;
-
-                progressBar.Maximum = t.count;
-                progressBar.Value = t.processed;
-                
-                if (t.processed == t.count)
-                {
-                    statusLabel.Text = $"{t.count} images saved";
-                    progressBar.Visible = false;
-                }
-                else
-                {
-                    statusLabel.Text = $"Saving image {t.processed}/{t.count}";
-                }
-            });
-        }
-
         private void FolderTreeView_MouseClick(object sender, TreeNodeMouseClickEventArgs e)
         {
             if (e.Button == MouseButtons.Right && e.Node != null)
@@ -430,7 +521,6 @@ namespace SOR4Explorer
                 var images = library.GetTextures(folder);
                 progressBar.Maximum = images.Count;
                 progressBar.Value = 0;
-                progressBar.Visible = true;
                 ContextMenu.FromImages(library, images, true, SaveProgress()).Show(folderTreeView, e.Location);
             }
         }
@@ -479,6 +569,7 @@ namespace SOR4Explorer
         {
             if (library.Load(installationPath) == false)
             {
+                UpdateChangesLabel();
                 MessageBox.Show(
                     "Please select a valid Streets of Rage 4 installation folder",
                     "Data folder invalid",
@@ -487,8 +578,7 @@ namespace SOR4Explorer
                     MessageBoxDefaultButton.Button1,
                     MessageBoxOptions.DefaultDesktopOnly);
                 dragInstructions.Visible = true;
-                splitContainer.Visible = false;
-                statusBar.Visible = false;
+                appContainer.Visible = false;
                 return;
             }
 
@@ -513,17 +603,17 @@ namespace SOR4Explorer
                 foreach (TreeNode node in folderTreeView.Nodes[0].Nodes)
                     node.Expand();
                 dragInstructions.Visible = false;
-                splitContainer.Visible = true;
-                statusBar.Visible = true;
+                appContainer.Visible = true;
                 Settings.InstallationPath = installationPath;
             }
             else
             {
                 dragInstructions.Visible = true;
-                splitContainer.Visible = false;
-                statusBar.Visible = false;
+                appContainer.Visible = false;
             }
+
             Activate();
+            UpdateChangesLabel();
 
             TreeNode AddPathToTree(string folder)
             {
@@ -638,6 +728,89 @@ namespace SOR4Explorer
                 AddBackgroundLoadTask(loadOps.Dequeue());
         }
 
+        #endregion
+
+        #region Control logic
+
+        void ApplyChanges()
+        {
+            if (library.ImageChanges.Count > 0)
+            {
+                changesLabel.Text = "Saving changes...";
+                Cursor.Current = Cursors.WaitCursor;
+                Refresh();
+                library.SaveChanges();
+                Cursor.Current = Cursors.Default;
+            }
+            UpdateChangesLabel();
+        }
+
+        void DiscardChanges()
+        {
+            if (library.ImageChanges.Count > 0)
+            {
+                if (dragInstructions.Visible == false && MessageBox.Show(
+                    this,
+                    $"You are going to discard {library.ImageChanges.Count:N0} changes.\nAre you sure?",
+                    "Close library",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question
+                    ) == DialogResult.Yes)
+                {
+                    library.DiscardChanges();
+                    UpdateChangesLabel();
+                    FillImageList(folderTreeView.SelectedNode.Name);
+                }
+            }
+        }
+
+        void UpdateChangesLabel()
+        {
+            if (progressBar.Visible)
+            {
+                applyButton.Visible = false;
+                discardButton.Visible = false;
+                return;
+            }
+
+            var count = library.ImageChanges.Count;
+            if (count == 0)
+            {
+                applyButton.Visible = false;
+                discardButton.Visible = false;
+                changesLabel.Text = "Drag replacements over existing textures \u2935";
+            }
+            else
+            {
+                changesLabel.Text = $"{count:N0} texture{(count > 1 ? "s":"")} changed";
+                applyButton.Visible = true;
+                discardButton.Visible = true;
+            }
+        }
+
+        private Progress<ImageOpProgress> SaveProgress()
+        {
+            return new Progress<ImageOpProgress>(t =>
+            {
+                if (statusBar == null || statusBar.Items == null || statusBar.Items.Count < 1)
+                    return;
+
+                progressBar.Maximum = t.count;
+                progressBar.Value = t.processed;
+
+                if (t.processed == t.count)
+                {
+                    progressBar.Visible = false;
+                    FillImageList(folderTreeView.SelectedNode.Name);
+                    UpdateChangesLabel();
+                }
+                else
+                {
+                    changesLabel.Text = $"Saving image {t.processed}/{t.count}";
+                    progressBar.Visible = true;
+                }
+            });
+        }
         #endregion
     }
 }
