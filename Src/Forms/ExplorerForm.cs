@@ -9,41 +9,6 @@ using System.Windows.Forms;
 
 namespace SOR4Explorer
 {
-    class ToolStripColorTable : ProfessionalColorTable
-    {
-        static readonly Color greyBackground = Color.FromArgb(48, 48, 48);
-
-        public override Color ButtonSelectedGradientBegin => greyBackground;
-        public override Color ButtonSelectedGradientEnd => greyBackground;
-        public override Color ButtonSelectedHighlight => greyBackground;
-        public override Color ButtonSelectedBorder => greyBackground;
-    }
-
-    class ToolStripCustomRenderer : ToolStripProfessionalRenderer
-    {
-        public ToolStripCustomRenderer() : base(new ToolStripColorTable())
-        {
-        }
-
-        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
-        {
-            e.TextColor = Color.White;
-            base.OnRenderItemText(e);
-        }
-
-        protected override void OnRenderButtonBackground(ToolStripItemRenderEventArgs e)
-        {
-            base.OnRenderButtonBackground(e);
-            if (e.Item.Pressed)
-            {
-                Rectangle rc = new Rectangle(Point.Empty, e.Item.Size);
-                Color c = SystemColors.Highlight;
-                using SolidBrush brush = new SolidBrush(c);
-                e.Graphics.FillRectangle(brush, rc);
-            }
-        }
-    }
-
     public partial class ExplorerForm : Form
     {
         private readonly TextureLibrary library = new TextureLibrary();
@@ -173,7 +138,7 @@ namespace SOR4Explorer
             {
                 Alignment = ToolStripItemAlignment.Right,
                 TextAlign = ContentAlignment.MiddleRight,
-                AutoSize = false,
+                AutoSize = true,
                 Size = new Size(400, 60),
                 Margin = new Padding(0, 0, 32, 0),
                 Text = "No changes",
