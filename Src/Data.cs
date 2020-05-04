@@ -4,8 +4,8 @@ using System.Text;
 
 namespace SOR4Explorer
 {
-    [System.AttributeUsage(System.AttributeTargets.Class | System.AttributeTargets.Struct)]
-    public class SerializationID : System.Attribute
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+    public class SerializationID : Attribute
     {
         public int id;
         public SerializationID(int id) => this.id = id;
