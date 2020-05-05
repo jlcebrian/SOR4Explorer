@@ -84,8 +84,26 @@ namespace SOR4Explorer
                             var slice = data.Slice(index, length);
                             index += length;
 
-                            if (length == 0 || IsString(slice) || !IsValidContainer(slice))        // String
+                            // Force string interpretation if we already have objets
+                            bool isString = IsString(slice) || !IsValidContainer(slice) || length == 0;
+                            if (children.ContainsKey(fieldID) && children[fieldID].Type == PackedData.Type.StringArray)
+                                isString = true;
+
+                            if (isString)        // String
                             {
+                                // Detect internal string encoding. Actually, this could be a case of
+                                // trying to deserialize a string[] instead of a string. Further tests needed!
+                                if (slice.Length > 1 && slice[0] == 10)
+                                {
+                                    int subindex = 1;
+                                    while (ReadInt(slice, ref subindex) == slice.Length - subindex && subindex <= slice.Length)
+                                    {
+                                        slice = slice.Slice(subindex);
+                                        if (slice.Length < 2 || slice[0] != 10)
+                                            break;
+                                        subindex = 1;
+                                    }
+                                }
                                 var value = Encoding.UTF8.GetString(slice);
                                 AddItem(children, fieldID, PackedData.Type.String, childDescriptor, value);
                             }
@@ -122,8 +140,9 @@ namespace SOR4Explorer
                 }
                 else if (children[fieldID].Type == type)
                 {
-                    var array = Array.CreateInstance(ArrayType(type), 1);
-                    array.SetValue(value, 0);
+                    var array = Array.CreateInstance(ArrayType(type), 2);
+                    array.SetValue(children[fieldID].Value, 0);
+                    array.SetValue(value, 1);
                     children[fieldID] = new PackedData.Property()
                     {
                         Descriptor = childDescriptor,

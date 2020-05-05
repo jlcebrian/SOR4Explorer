@@ -11,20 +11,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Images\bars.png" />
-    <None Remove="Images\FolderIconSmall.png" />
-    <None Remove="Images\save.png" />
-    <None Remove="Images\trash.png" />
+    <None Remove="Images\SheetIconSmall.png" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Images\bars.png" />
     <EmbeddedResource Include="Images\FolderIcon.png" />
     <EmbeddedResource Include="Images\save.png" />
+    <EmbeddedResource Include="Images\SheetIconSmall.png" />
     <EmbeddedResource Include="Images\SOR4Explorer.ico" />
-  </ItemGroup>
-
-  <ItemGroup>
     <EmbeddedResource Include="Images\FolderIconSmall.png" />
     <EmbeddedResource Include="Images\trash.png" />
   </ItemGroup>

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -14,24 +15,19 @@ namespace SOR4Explorer
         private readonly TextureLibrary library = new TextureLibrary();
         private readonly DataLibrary data = new DataLibrary();
         private readonly Timer timer;
+        private readonly DataViewForm dataViewForm;
         private LocalizationData localization;
-
-        private Image folderIcon;
-        private Image folderIconSmall;
-        private Image barsImage;
-        private Image trashImage;
-        private Image saveImage;
-        private Panel appContainer;
 
         #region Initialization and components
 
+        private Panel appContainer;
         private SplitContainer splitContainer;
         private BufferedTreeView folderTreeView;
         private BufferedListView imageListView;
         private Panel dragInstructions;
         private Label instructionsLabel;
         private StatusStrip statusBar;
-        private ToolStrip toolStrip;
+        private BlackToolStrip toolStrip;
         private ToolStripStatusLabel statusLabel;
         private ToolStripProgressBar progressBar;
         private ToolStripLabel changesLabel;
@@ -40,6 +36,7 @@ namespace SOR4Explorer
 
         public ExplorerForm()
         {
+            dataViewForm = new DataViewForm(data);
             InitializeComponents();
 
             if (Settings.InstallationPath != null)
@@ -53,15 +50,6 @@ namespace SOR4Explorer
         void InitializeComponents()
         {
             SuspendLayout();
-
-            // Load program icon and other images
-            var assembly = typeof(Program).Assembly;
-            Icon = new Icon(assembly.GetManifestResourceStream("SOR4Explorer.Images.SOR4Explorer.ico"));
-            folderIcon = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.FolderIcon.png"));
-            folderIconSmall = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.FolderIconSmall.png"));
-            barsImage = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.bars.png"));
-            saveImage = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.save.png"));
-            trashImage = Image.FromStream(assembly.GetManifestResourceStream("SOR4Explorer.Images.trash.png"));
 
             //
             // appContainer
@@ -94,55 +82,13 @@ namespace SOR4Explorer
             //
             // toolStrip
             //
-            toolStrip = new ToolStrip()
-            {
-                AutoSize = false,
-                Stretch = true,
-                Dock = DockStyle.Top,
-                ForeColor = Color.White,
-                BackColor = Color.Black,
-                Size = new Size(400, 60),
-                Padding = new Padding(0),
-                GripStyle = ToolStripGripStyle.Hidden,
-                Renderer = new ToolStripCustomRenderer(),
-                CanOverflow = false,
-            };
-            toolStrip.Items.Add(new ToolStripButton("", barsImage)
-            {
-                Padding = new Padding(8, 0, 32, 0),
-                ImageScaling = ToolStripItemImageScaling.SizeToFit
-            });
-            toolStrip.Items.Add(progressBar = new ToolStripProgressBar()
-            {
-                Alignment = ToolStripItemAlignment.Right,
-                Size = new Size(200, 8),
-                Padding = new Padding(0, 0, 40, 0),
-            });
-            toolStrip.Items.Add(discardButton = new ToolStripButton("Discard", trashImage, (s,e) => DiscardChanges())
-            {
-                Alignment = ToolStripItemAlignment.Right,
-                AutoToolTip = false,
-                Padding = new Padding(16),
-                ImageAlign = ContentAlignment.MiddleRight,
-                Visible = false,
-            });
-            toolStrip.Items.Add(applyButton = new ToolStripButton("Apply", saveImage, (s,e) => ApplyChanges())
-            {
-                Alignment = ToolStripItemAlignment.Right,
-                AutoToolTip = false,
-                Padding = new Padding(16),
-                ImageAlign = ContentAlignment.MiddleRight,
-                Visible = false
-            });
-            toolStrip.Items.Add(changesLabel = new ToolStripLabel()
-            {
-                Alignment = ToolStripItemAlignment.Right,
-                TextAlign = ContentAlignment.MiddleRight,
-                AutoSize = true,
-                Size = new Size(400, 60),
-                Margin = new Padding(0, 0, 32, 0),
-                Text = "No changes",
-            });
+            toolStrip = new BlackToolStrip();
+            toolStrip.AddMenuItem(Program.BarsImage).DropDownItems.AddRange(MainMenu());
+            toolStrip.NextAlignment = ToolStripItemAlignment.Right;
+            progressBar = toolStrip.AddProgressBar();
+            discardButton = toolStrip.AddButton(Program.TrashImage, "Discard", DiscardChanges);
+            applyButton = toolStrip.AddButton(Program.SaveImage, "Apply", ApplyChanges);
+            changesLabel = toolStrip.AddLabel();
             progressBar.Visible = false;
 
             // 
@@ -174,7 +120,6 @@ namespace SOR4Explorer
                 BorderStyle = BorderStyle.None,
                 Dock = DockStyle.Fill,
                 Font = new Font("Tahoma", 9.0F, FontStyle.Regular, GraphicsUnit.Point, ((byte)(0))),
-                Location = new Point(0, 0),
                 Name = "folderTreeView",
                 Size = new Size(474, 1006),
                 TabIndex = 0,
@@ -188,7 +133,7 @@ namespace SOR4Explorer
                     ColorDepth = ColorDepth.Depth32Bit
                 }
             };
-            folderTreeView.ImageList.Images.Add(folderIconSmall);
+            folderTreeView.ImageList.Images.Add(Program.FolderIconSmall);
             folderTreeView.AfterSelect += FolderTreeView_AfterSelect;
             folderTreeView.NodeMouseClick += FolderTreeView_MouseClick;
             folderTreeView.DrawNode += FolderTreeView_DrawNode;
@@ -247,6 +192,7 @@ namespace SOR4Explorer
             Text = "SOR4 Explorer";
             DoubleBuffered = true;
             AllowDrop = true;
+            Icon = Program.Icon;
 
             DragDrop += ExplorerForm_DragDrop;
             DragEnter += ExplorerForm_DragEnter;
@@ -600,7 +546,7 @@ namespace SOR4Explorer
         private void FillImageList(string path)
         {
             imageListView.LargeImageList.Images.Clear();
-            imageListView.LargeImageList.Images.Add(folderIcon);
+            imageListView.LargeImageList.Images.Add(Program.FolderIcon);
             imageListView.Clear();
             loadOps.Clear();
 
@@ -751,6 +697,16 @@ namespace SOR4Explorer
                 applyButton.Visible = true;
                 discardButton.Visible = true;
             }
+        }
+
+        public ToolStripMenuItem[] MainMenu()
+        {
+            return new ToolStripMenuItem[] {
+                new ToolStripMenuItem("Show game data", null, (sender, ev) => {
+                    dataViewForm.FillObjects();
+                    dataViewForm.Show();
+                }) 
+            };
         }
 
         private Progress<ImageOpProgress> SaveProgress()

@@ -20,6 +20,9 @@ namespace SOR4Explorer
             public byte[] Data;
         }
 
+        public IEnumerable<string> ClassNames => objects.Keys;
+        public IEnumerable<string> ObjectNames(string className) => objects[className].Select(n => n.Value.Name);
+
         public bool Load(string installationPath)
         {
             objects.Clear();
