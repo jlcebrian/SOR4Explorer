@@ -1,13 +1,11 @@
 
 - Allow dragging a folder containing multiple textures to change
 - Better way to show which textures have been changed (in folder, too?)
-- Save a copy of the original textures list (first execution; registry?)
 - Close the datafiles after 1 second of inactivity (allow playing while app is running)
 
 GAME DATA
 - Show related SpriteData (tooltip?)
 
 FUTURE STUFF
-- Use an application data folder for settings, file backups, etc.
 - Install MODs from ZIPs (replace every texture in the zip file)
 - Show a 'mods' form with additional information about every mod

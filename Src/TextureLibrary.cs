@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Security.Policy;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ namespace SOR4Explorer
 {
     class TextureLibrary
     {
+
         public string RootPath { get; set; }
 
         public event Action<TextureInfo> OnTextureChangeDiscarded;
@@ -25,6 +27,9 @@ namespace SOR4Explorer
         private readonly Dictionary<string, int> ImageCountCache = new Dictionary<string, int>();
 
         private string dataFolder;
+        private int nonOriginalCount;
+
+        public int NonOriginalCount => nonOriginalCount;
 
         public void AddChange (string path, Bitmap image)
         {
@@ -77,6 +82,7 @@ namespace SOR4Explorer
             DataFiles.Clear();
             Folders.Clear();
             ImageCountCache.Clear();
+            nonOriginalCount = 0;
             RootPath = "";
         }
 
@@ -84,8 +90,80 @@ namespace SOR4Explorer
         {
             foreach (var key in DataFiles.Keys.ToArray())
             {
-                DataFiles[key].Close();
-                DataFiles[key] = null;
+                if (DataFiles[key] != null)
+                {
+                    DataFiles[key].Close();
+                    DataFiles[key] = null;
+                }
+            }
+        }
+
+        public bool GameFilesChanged()
+        {
+            foreach (var texturesFilePath in DataFiles.Keys)
+            {
+                long size = Settings.GetFileSize(texturesFilePath);
+
+                bool changed;
+                if (DataFiles[texturesFilePath] != null)
+                    changed = DataFiles[texturesFilePath].Length != size;
+                else
+                    changed = new FileInfo(texturesFilePath).Length != size;
+
+                if (changed)
+                    return true;
+            }
+            return false;                   
+        }
+
+        public void RestoreFromBackups()
+        {
+            CloseDatafiles();
+
+            foreach (var texturesFilePath in DataFiles.Keys)
+            {
+                string tableFilePath = Path.Combine(Path.GetDirectoryName(texturesFilePath), Path.GetFileName(texturesFilePath).Replace("textures", "texture_table"));
+                string backupTablePath = Path.Combine(Settings.FileName(Path.ChangeExtension(Path.GetFileName(tableFilePath), ".bak")));
+                if (File.Exists(backupTablePath))
+                {
+                    File.Copy(backupTablePath, tableFilePath, true);
+                    long size = Settings.GetFileSize(texturesFilePath);
+                    if (size != 0)
+                    {
+                        using FileStream file = File.OpenWrite(texturesFilePath);
+                        file.SetLength(size);
+
+                        var list = Lists[texturesFilePath];
+                        var originalList = new TextureList(tableFilePath, texturesFilePath);
+                        foreach (var info in list)
+                        {
+                            if (info.offset >= size)
+                            {
+                                var previous = originalList.First(n => n.name == info.name);
+                                info.offset = previous.offset;
+                                info.length = previous.length;
+                                OnTextureChangeDiscarded?.Invoke(info);
+                            }
+                        }
+                    }
+                }
+            }
+
+            nonOriginalCount = 0;
+        }
+
+        private void SaveBackups()
+        {
+            foreach (var dataFilePath in DataFiles.Keys)
+            {
+                string tableFilePath = Path.Combine(Path.GetDirectoryName(dataFilePath), Path.GetFileName(dataFilePath).Replace("textures", "texture_table"));
+                string backupTablePath = Path.Combine(Settings.FileName(Path.ChangeExtension(Path.GetFileName(tableFilePath), ".bak")));
+                if (!File.Exists(backupTablePath))
+                {
+                    File.Copy(tableFilePath, backupTablePath);
+                    long size = new FileInfo(dataFilePath).Length;
+                    Settings.SetFileSize(dataFilePath, size);
+                }
             }
         }
 
@@ -114,6 +192,11 @@ namespace SOR4Explorer
                         item.offset = (uint)dataFileStream.Position;
                         item.length = (uint)compressedData.Length;
                         item.changed = false;
+                        if (item.original)
+                        {
+                            item.original = false;
+                            nonOriginalCount++;
+                        }
                         dataFileStream.Write(compressedData);
                         dataFileStream.Close();
                     }
@@ -133,6 +216,7 @@ namespace SOR4Explorer
         public bool Load(string installationPath)
         {
             Clear();
+
             RootPath = installationPath;
 
             try
@@ -148,7 +232,11 @@ namespace SOR4Explorer
                     Lists[texturesFile] = new TextureList(tableFile, texturesFile);
 
                     foreach (var file in Lists[texturesFile])
+                    {
                         AddFoldersInPath(file.name);
+                        if (file.original == false)
+                            nonOriginalCount++;
+                    }
 
                     fileIndex++;
                     texturesFile = Path.Combine(dataFolder, $"textures{fileIndex:D2}");
@@ -161,6 +249,8 @@ namespace SOR4Explorer
                 DataFiles.Clear();
                 return false;
             }
+
+            SaveBackups();
             return true;
 
             void AddFoldersInPath(string path)

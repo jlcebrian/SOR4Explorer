@@ -11,6 +11,7 @@ namespace SOR4Explorer
         public UInt32 length;
         public string datafile;
         public bool changed;
+        public bool original = true;
     }
 
     struct ImageOpProgress

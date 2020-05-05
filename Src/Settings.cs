@@ -1,46 +1,109 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace SOR4Explorer
 {
-    static class Settings
+    class Settings
     {
+        public static Settings Instance => instance ?? new Settings();
+        private static Settings instance;
+
         public static string InstallationPath
         {
-            get => GetString(InstallationPathKey);
-            set => SetString(InstallationPathKey, value);
+            get => Instance.variables.InstallationPath;
+            set => Instance.variables.InstallationPath = value;
+        }
+        public static string LocalDataPath => Instance.localDataPath;
+
+        public static void SetFileSize(string name, long size)
+        {
+            Instance.variables.SetFileSize(name, size);
+        }
+
+        public static long GetFileSize(string name)
+        {
+            return Instance.variables.GetFileSize(name);
+        }
+
+        public static bool FileExists(string name)
+        {
+            return File.Exists(FileName(name));
+        }
+
+        public static string FileName(string name)
+        {
+            return Path.Combine(Instance.localDataPath, name);
         }
 
         #region Implementation
-
-        private const string RegistryKey = @"SOFTWARE\SOR4 Explorer";
-        private const string InstallationPathKey = "installationPath";
-
-        private static string GetString(string subkey)
+        
+        [Serializable]
+        class Variables : INotifyPropertyChanged
         {
-            RegistryKey key = Registry.CurrentUser.OpenSubKey(RegistryKey);
-            if (key != null)
+            private string installationPath;
+            public string InstallationPath
             {
-                var value = key.GetValue(subkey) as string;
-                key.Close();
-                return value ?? "";
+                get => installationPath;
+                set
+                {
+                    if (installationPath != value)
+                    {
+                        installationPath = value;
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("InstallationPath"));
+                    }
+                }
             }
-            return "";
+
+            public Dictionary<string, long> FileSizes { get; set; } = new Dictionary<string, long>();
+
+            public long GetFileSize(string name) => FileSizes.TryGetValue(name, out long size) ? size : 0;
+            public void SetFileSize(string name, long size)
+            {
+                FileSizes[name] = size;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("FileSize"));
+            }
+
+            public event PropertyChangedEventHandler PropertyChanged;
         }
 
-        private static void SetString(string subkey, string value)
+        private readonly string localDataPath;
+        private Variables variables;
+
+        private Settings()
         {
-            RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryKey);
-            if (value == null)
-                key.DeleteValue(subkey);
+            instance = this;
+            localDataPath = Path.Combine(Environment.GetEnvironmentVariable("LocalAppData"), "SOR4 Explorer");
+            Directory.CreateDirectory(localDataPath);
+
+            var settingsFile = Path.Combine(localDataPath, SettingsFileName);
+            if (File.Exists(settingsFile))
+            {
+                var text = File.ReadAllText(settingsFile);
+                variables = JsonSerializer.Deserialize<Variables>(text);
+            }
             else
-                key.SetValue(subkey, value);
-            key.Close();
+            {
+                variables = new Variables();
+            }
+            variables.PropertyChanged += (sender, ev) =>
+            {
+                var text = JsonSerializer.Serialize(variables, new JsonSerializerOptions() { 
+                    WriteIndented = true 
+                });
+                File.WriteAllText(settingsFile, text);
+            };
         }
+
+        private const string SettingsFileName = "settings.json";
 
         #endregion
     }

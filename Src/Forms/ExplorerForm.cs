@@ -30,6 +30,7 @@ namespace SOR4Explorer
         private BlackToolStrip toolStrip;
         private ToolStripStatusLabel statusLabel;
         private ToolStripProgressBar progressBar;
+        private ToolStripLabel gameStatusLabel;
         private ToolStripLabel changesLabel;
         private ToolStripButton applyButton;
         private ToolStripButton discardButton;
@@ -76,10 +77,10 @@ namespace SOR4Explorer
                 Stretch = true,
                 AutoSize = false
             };
-            statusBar.Items.Add(statusLabel = new ToolStripStatusLabel() { 
-                Spring = true, 
-                Text = "Ready", 
-                TextAlign = ContentAlignment.MiddleLeft 
+            statusBar.Items.Add(statusLabel = new ToolStripStatusLabel() {
+                Spring = true,
+                Text = "Ready",
+                TextAlign = ContentAlignment.MiddleLeft
             });
 
             //
@@ -92,6 +93,16 @@ namespace SOR4Explorer
                 mainMenuButton.DropDownItems.Clear();
                 mainMenuButton.DropDownItems.AddRange(MainMenu());
             };
+            toolStrip.Items.Add(gameStatusLabel = new ToolStripLabel()
+            {
+                AutoSize = false,
+                Height = toolStrip.Height,
+                Width = 382 /* 314 */,
+                TextAlign = ContentAlignment.MiddleLeft,
+                BackColor = Color.White
+            });
+            //toolStrip.AddMenuItem(Program.BarsImage);
+            toolStrip.Items.Add(new ToolStripSeparator());
             toolStrip.NextAlignment = ToolStripItemAlignment.Right;
             progressBar = toolStrip.AddProgressBar();
             discardButton = toolStrip.AddButton(Program.TrashImage, "Discard", DiscardChanges);
@@ -694,6 +705,21 @@ namespace SOR4Explorer
 
         #region Control logic
 
+        void RestoreGameFiles()
+        {
+            if (MessageBox.Show(
+                    this,
+                    "You are going to restore the game's files to their original state,\nlosing any texture modifications currently active.\n\nAre you sure?",
+                    "Close library",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question
+                    ) == DialogResult.Yes)
+            {
+                library.RestoreFromBackups();
+                UpdateChangesLabel();
+            }
+        }
+
         void ApplyChanges()
         {
             if (library.ImageChanges.Count > 0)
@@ -734,6 +760,11 @@ namespace SOR4Explorer
                 return;
             }
 
+            if (library.NonOriginalCount == 0)
+                gameStatusLabel.Text = "Original textures";
+            else
+                gameStatusLabel.Text = $"{library.NonOriginalCount:N0} textures modified";
+
             var count = library.ImageChanges.Count;
             if (count == 0)
             {
@@ -752,6 +783,8 @@ namespace SOR4Explorer
         public ToolStripItem[] MainMenu()
         {
             return new ToolStripItem[] {
+                new ToolStripMenuItem("&Restore game data files", null, (sender, ev) => RestoreGameFiles()) { Enabled = library.GameFilesChanged() },
+                new ToolStripSeparator(),
                 new ToolStripMenuItem("Update game files", null, (sender, ev) => ApplyChanges()) { Enabled = applyButton.Visible },
                 new ToolStripMenuItem("Discard changed textures", null, (sender, ev) => DiscardChanges()) { Enabled = applyButton.Visible },
                 new ToolStripSeparator(),

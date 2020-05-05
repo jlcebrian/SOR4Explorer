@@ -26,20 +26,25 @@ namespace SOR4Explorer
 
         public TextureList(string filename, string datafile)
         {
+            long originalFileSize = Settings.GetFileSize(datafile);
+
             var file = File.OpenRead(filename);
             var reader = new BinaryReader(file, Encoding.Unicode);
             try
             {
                 while (true)
                 {
-                    items.Add(new TextureInfo()
+                    var info = new TextureInfo()
                     {
                         name = reader.ReadString().Replace('/', Path.DirectorySeparatorChar),
                         offset = reader.ReadUInt32(),
                         flags = reader.ReadUInt32(),
                         length = reader.ReadUInt32(),
                         datafile = datafile
-                    });
+                    };
+                    if (info.offset >= originalFileSize)
+                        info.original = false;
+                    items.Add(info);
                 }
             }
             catch (EndOfStreamException)
