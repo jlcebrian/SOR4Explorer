@@ -39,6 +39,9 @@ namespace SOR4Explorer
             dataViewForm = new DataViewForm(data);
             InitializeComponents();
 
+            library.OnTextureChangeDiscarded += Library_OnTextureChangeDiscarded;
+            library.OnTextureChanged += Library_OnTextureChangesAdded;
+
             if (Settings.InstallationPath != null)
                 LoadTextureLists(Settings.InstallationPath);
 
@@ -83,7 +86,12 @@ namespace SOR4Explorer
             // toolStrip
             //
             toolStrip = new BlackToolStrip();
-            toolStrip.AddMenuItem(Program.BarsImage).DropDownItems.AddRange(MainMenu());
+            var mainMenuButton = toolStrip.AddMenuItem(Program.BarsImage);
+            mainMenuButton.DropDownOpening += (sender, args) =>
+            {
+                mainMenuButton.DropDownItems.Clear();
+                mainMenuButton.DropDownItems.AddRange(MainMenu());
+            };
             toolStrip.NextAlignment = ToolStripItemAlignment.Right;
             progressBar = toolStrip.AddProgressBar();
             discardButton = toolStrip.AddButton(Program.TrashImage, "Discard", DiscardChanges);
@@ -194,6 +202,7 @@ namespace SOR4Explorer
             AllowDrop = true;
             Icon = Program.Icon;
 
+            FormClosing += ExplorerForm_FormClosing;
             DragDrop += ExplorerForm_DragDrop;
             DragEnter += ExplorerForm_DragEnter;
 
@@ -273,6 +282,16 @@ namespace SOR4Explorer
                 SizeF lineSize = g.MeasureString(lines[i], lineFont);
                 g.DrawString(lines[i], lineFont, brush, new PointF(instructionsLabel.Width / 2 - lineSize.Width / 2, y));
                 y += lineSize.Height * lineSpacing;
+            }
+        }
+
+        private void ExplorerForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (library.ImageChanges.Count > 0)
+            {
+                if (MessageBox.Show("Unsaved changes will be lost.\nAre you sure?", "Close",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                    e.Cancel = true;
             }
         }
 
@@ -545,6 +564,7 @@ namespace SOR4Explorer
 
         private void FillImageList(string path)
         {
+            imageListView.BeginUpdate();
             imageListView.LargeImageList.Images.Clear();
             imageListView.LargeImageList.Images.Add(Program.FolderIcon);
             imageListView.Clear();
@@ -575,6 +595,7 @@ namespace SOR4Explorer
                     loadOps.Enqueue(new ImageToLoad { listItem = listItem, info = info });
                 }
             }
+            imageListView.EndUpdate();
         }
 
         #endregion
@@ -605,6 +626,34 @@ namespace SOR4Explorer
             });
             currentTask.Add(task);
         }
+        
+        private void Library_OnTextureChangesAdded(TextureInfo obj, Bitmap image)
+        {
+            imageListView.LargeImageList.Images.Add(TextureLoader.ScaledImage(image));
+
+            foreach (ListViewItem item in imageListView.Items)
+            {
+                if (item.Tag is TextureInfo info && obj.name == info.name)
+                {
+                    item.Font = new Font(item.Font, FontStyle.Bold);
+                    item.ImageIndex = imageListView.LargeImageList.Images.Count - 1;
+                }
+            }
+            UpdateChangesLabel();
+        }
+
+        private void Library_OnTextureChangeDiscarded(TextureInfo obj)
+        {
+            foreach (ListViewItem item in imageListView.Items)
+            {
+                if (item.Tag is TextureInfo info && obj.name == info.name)
+                {
+                    item.Font = new Font(item.Font, FontStyle.Regular);
+                    loadOps.Enqueue(new ImageToLoad() { listItem = item, info = obj });
+                }
+            }
+            UpdateChangesLabel();
+        }
 
         private void Timer_Tick(object sender, EventArgs e)
         {
@@ -622,7 +671,9 @@ namespace SOR4Explorer
                         var listItem = result.listItem;
                         if (image != null && listItem != null && listItem.ImageList != null)
                         {
-                            listItem.Text += $"\n({image.Width}x{image.Height})";
+                            var suffix = $"\n({image.Width}x{image.Height})";
+                            if (listItem.Text.EndsWith(suffix) == false)
+                                listItem.Text += suffix;
                             listItem.ImageList.Images.Add(TextureLoader.ScaledImage(image));
                             listItem.ImageIndex = listItem.ImageList.Images.Count - 1;
                         }
@@ -670,7 +721,6 @@ namespace SOR4Explorer
                 {
                     library.DiscardChanges();
                     UpdateChangesLabel();
-                    FillImageList(folderTreeView.SelectedNode.Name);
                 }
             }
         }
@@ -699,10 +749,13 @@ namespace SOR4Explorer
             }
         }
 
-        public ToolStripMenuItem[] MainMenu()
+        public ToolStripItem[] MainMenu()
         {
-            return new ToolStripMenuItem[] {
-                new ToolStripMenuItem("Show game data", null, (sender, ev) => {
+            return new ToolStripItem[] {
+                new ToolStripMenuItem("Update game files", null, (sender, ev) => ApplyChanges()) { Enabled = applyButton.Visible },
+                new ToolStripMenuItem("Discard changed textures", null, (sender, ev) => DiscardChanges()) { Enabled = applyButton.Visible },
+                new ToolStripSeparator(),
+                new ToolStripMenuItem("View game data", null, (sender, ev) => {
                     dataViewForm.FillObjects();
                     dataViewForm.Show();
                 }) 

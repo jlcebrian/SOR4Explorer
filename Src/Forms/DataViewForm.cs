@@ -107,6 +107,8 @@ namespace SOR4Explorer
             { "AnimatedSpriteData.1.3", "Frames" },
             { "AnimatedSpriteData.1.3.1", "Sprites" },
             { "AnimatedSpriteData.1.3.1.1", "Texture" },
+            { "CharacterData.99", "Attacks" },
+            { "CharacterData.99.1", "Name" },
         };
 
         #region Initialization & components

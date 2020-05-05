@@ -1,10 +1,7 @@
 
-- Alert the user if there are pending unsaved changes on exit
-- Add 'replace' options to image context menu
 - Allow dragging a folder containing multiple textures to change
 - Better way to show which textures have been changed (in folder, too?)
 - Save a copy of the original textures list (first execution; registry?)
-- Add a button to restore the textures to the original state
 - Close the datafiles after 1 second of inactivity (allow playing while app is running)
 
 GAME DATA

@@ -13,6 +13,10 @@ namespace SOR4Explorer
     class TextureLibrary
     {
         public string RootPath { get; set; }
+
+        public event Action<TextureInfo> OnTextureChangeDiscarded;
+        public event Action<TextureInfo, Bitmap> OnTextureChanged;
+
         public readonly Dictionary<string, TextureList> Lists = new Dictionary<string, TextureList>();
         public readonly Dictionary<string, FileStream> DataFiles = new Dictionary<string, FileStream>();
         public readonly HashSet<string> Folders = new HashSet<string>();
@@ -36,11 +40,44 @@ namespace SOR4Explorer
                         path = path
                     };
                     item.changed = true;
+                    OnTextureChanged?.Invoke(item, image);
                     return;
                 }
             }
 
             Console.Write($"Warning: attempt to change file {path} which is not in the library");
+        }
+
+        public void DiscardChange(TextureInfo info)
+        {
+            if (ImageChanges.ContainsKey(info.name))
+            {
+                ImageChanges.Remove(info.name);
+                info.changed = false;
+                OnTextureChangeDiscarded?.Invoke(info);
+            }
+        }
+
+        public void DiscardChanges()
+        {
+            foreach (var list in Lists.Values)
+            {
+                foreach (var item in list)
+                {
+                    item.changed = false;
+                    OnTextureChangeDiscarded?.Invoke(item);
+                }
+            }
+            ImageChanges.Clear();
+        }
+
+        public void Clear()
+        {
+            Lists.Clear();
+            DataFiles.Clear();
+            Folders.Clear();
+            ImageCountCache.Clear();
+            RootPath = "";
         }
 
         public void CloseDatafiles()
@@ -244,23 +281,6 @@ namespace SOR4Explorer
             if (folder != "")
                 folder = Path.TrimEndingDirectorySeparator(folder) + Path.DirectorySeparatorChar;
             return folder;
-        }
-
-        public void DiscardChanges()
-        {
-            foreach (var list in Lists.Values)
-                foreach (var item in list)
-                    item.changed = false;
-            ImageChanges.Clear();
-        }
-
-        public void Clear()
-        {
-            Lists.Clear();
-            DataFiles.Clear();
-            Folders.Clear();
-            ImageCountCache.Clear();
-            RootPath = "";
         }
 
         public IEnumerable<string> GetSubfolders(string folder)

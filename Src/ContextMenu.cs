@@ -1,18 +1,42 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace SOR4Explorer
 {
     static class ContextMenu
     {
+        private static void LoadTexture(TextureLibrary library, TextureInfo info)
+        {
+            OpenFileDialog ofd = new OpenFileDialog
+            { 
+                Filter = "Images|*.png;*.bmp;*.jpg",
+            };
+            if (ofd.ShowDialog() == DialogResult.OK)
+            {
+                Bitmap bitmap;
+                try
+                {
+                    bitmap = new Bitmap(ofd.FileName);
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(
+                        $"Unable to open image {ofd.FileName}\n{exception.Message}",
+                        "Invalid image",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error,
+                        MessageBoxDefaultButton.Button1);
+                    return;
+                }
+                library.AddChange(info.name, bitmap);
+            }
+        }
+
         private static void SaveTexture(string name, Bitmap image)
         {
             SaveFileDialog sfd = new SaveFileDialog
@@ -48,6 +72,10 @@ namespace SOR4Explorer
         public static ContextMenuStrip FromImage(TextureLibrary library, TextureInfo info)
         {
             ContextMenuStrip menu = new ContextMenuStrip();
+            menu.Items.Add("&Replace with...", null, (sender, ev) => LoadTexture(library, info));
+            if (library.ImageChanges.Any(n => n.Key == info.name))
+                menu.Items.Add("Discard changes", null, (sender, ev) => library.DiscardChange(info));
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("&Copy", null, (sender, ev) => Clipboard.SetImage(library.LoadTexture(info)));
             menu.Items.Add("&Save as...", null, (sender, ev) => SaveTexture(info.name, library.LoadTexture(info)));
             return menu;
