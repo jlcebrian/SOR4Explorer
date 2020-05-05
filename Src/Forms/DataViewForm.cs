@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Windows.Forms;
@@ -12,11 +14,31 @@ namespace SOR4Explorer
         private readonly DataLibrary data;
         private SplitContainer splitContainer;
 
+        class TreeSorterByImageIndex : System.Collections.IComparer
+        {
+            public int Compare(object ay, object ax)
+            {
+                return ax is TreeNode x && ay is TreeNode y ? 
+                    x.ImageIndex == y.ImageIndex ? x.Text.CompareTo(y.Text) : x.ImageIndex.CompareTo(y.ImageIndex) : 0;
+            }
+        }
+
+        public static Dictionary<string, string> PropertyCuts = new Dictionary<string, string>()
+        {
+            { "GuiNodeData.6.2.6", "GuiNodeData.6" },
+            { "BtNodeData.7.1.5.1", "BtNodeData.7.1" },
+            { "BtNodeData.7.1.10.1", "BtNodeData.7.1" },
+            { "BtNodeData.7.1.25.1", "BtNodeData.7.1" },
+            { "BtNodeData.7.1.29.1", "BtNodeData.7.1" },
+        };
+
         public static Dictionary<string, string> PropertyNames = new Dictionary<string, string>()
         {
             { "MetaFont.1", "Base Font" },
             { "MetaFont.1.1", "Name" },
             { "MetaFont.7", "Font Variants" },
+            { "MetaFont.7.1", "Languages" },
+            { "MetaFont.7.2", "Texture" },
             { "SpriteData.1", "Size" },
             { "SpriteData.1.1", "Width" },
             { "SpriteData.1.2", "Height" },
@@ -51,7 +73,6 @@ namespace SOR4Explorer
             { "GuiNodeData.6.2.5.2", "G" },
             { "GuiNodeData.6.2.5.3", "B" },
             { "GuiNodeData.6.2.5.4", "A" },
-            { "GuiNodeData.6.2.6", "GuiNodeData.6" },
             { "GuiNodeData.6.2.7", "Image" },
             { "GuiNodeData.6.2.7.1", "Texture" },
             { "GuiNodeData.6.2.8", "Label" },
@@ -81,6 +102,11 @@ namespace SOR4Explorer
             { "ExtrasScreenData.2.13", "Speed" },
             { "ExtrasScreenData.2.14", "Jump" },
             { "ExtrasScreenData.2.15", "Stamina" },
+            { "AnimatedSpriteData.1", "Animations" },
+            { "AnimatedSpriteData.1.1", "Name" },
+            { "AnimatedSpriteData.1.3", "Frames" },
+            { "AnimatedSpriteData.1.3.1", "Sprites" },
+            { "AnimatedSpriteData.1.3.1.1", "Texture" },
         };
 
         #region Initialization & components
@@ -133,7 +159,8 @@ namespace SOR4Explorer
                 BorderStyle = BorderStyle.None,
                 FullRowSelect = true,
                 HideSelection = false,
-                SelectedImageIndex = -1,
+                Sorted = true,
+                TreeViewNodeSorter = new TreeSorterByImageIndex(),
                 ImageList = new ImageList
                 {
                     ImageSize = new Size(32, 20),
@@ -157,7 +184,6 @@ namespace SOR4Explorer
                 BorderStyle = BorderStyle.None,
                 FullRowSelect = true,
                 HideSelection = false,
-                SelectedImageIndex = -1,
                 DrawMode = TreeViewDrawMode.OwnerDrawText,
                 ImageList = new ImageList
                 {
@@ -227,20 +253,53 @@ namespace SOR4Explorer
 
         #region Filling object lists
 
+        struct ObjectRef
+        {
+            public string Key;
+            public string Value;
+        }
+
         public void FillObjects()
         {
             objectsTreeView.Nodes.Clear();
+
+            List<ObjectRef> objects = new List<ObjectRef>();
             foreach (var className in data.ClassNames.OrderBy(a => a))
             {
                 if (className.EndsWith("CacheData"))
                     continue;
+                objects.AddRange(data.ObjectNames(className).Select(n => new ObjectRef { Key = className, Value = n }));
+            }
 
-                var parent = objectsTreeView.Nodes.Add(className, className, 0);
-                foreach (var objectName in data.ObjectNames(className).OrderBy(a => a))
+            AddItems(null, objects);
+
+            void AddItems(TreeNode node, IEnumerable<ObjectRef> items, int prefix = 0)
+            {
+                var children = (node?.Nodes ?? objectsTreeView.Nodes);
+
+                var folders = items
+                    .Where(n => n.Value.AsSpan(prefix).Contains(Path.DirectorySeparatorChar))
+                    .Select(n => n.Value[prefix..n.Value.IndexOf(Path.DirectorySeparatorChar, prefix)])
+                    .Distinct()
+                    .OrderBy(n => n);
+                foreach (var folder in folders)
                 {
-                    var node = parent.Nodes.Add($"{className}.{objectName}", objectName);
-                    node.ImageIndex = node.SelectedImageIndex = 1;
+                    var child = children.Add(folder);
+                    var subprefix = items.First().Value.Substring(0, prefix) + folder + Path.DirectorySeparatorChar;
+                    AddItems(child, items.Where(n => n.Value.StartsWith(subprefix)).ToArray(), subprefix.Length);
                 }
+
+                var local = items
+                    .Where(n => n.Value.AsSpan(prefix + 1)
+                    .Contains(Path.DirectorySeparatorChar) == false);
+                foreach (var item in local)
+                {
+                    var child = children.Add($"{item.Key}.{item.Value}", Path.GetFileName(item.Value));
+                    child.ImageIndex = child.SelectedImageIndex = 1;
+                }
+
+                if (node != null)
+                    node.ImageIndex = node.SelectedImageIndex = 0;
             }
         }
 
@@ -268,9 +327,28 @@ namespace SOR4Explorer
             string PropertyName(PackedData.Descriptor descriptor)
             {
                 var name = descriptor.ToString().Replace("#", prefix);
+                if (PropertyNames.TryGetValue(name, out string fullName))
+                    return fullName;
+
                 int replacements = 0;
-                while (PropertyNames.TryGetValue(name, out string fullName) && replacements++ < 100)
-                    name = fullName;
+                while (replacements < 100)
+                {
+                    bool any = false;
+                    foreach (var pair in PropertyCuts)
+                    {
+                        if (name.StartsWith(pair.Key))
+                        {
+                            name = pair.Value + name.Substring(pair.Key.Length);
+                            any = true;
+                            break;
+                        }
+                    }
+                    if (!any)
+                        break;
+                    if (PropertyNames.TryGetValue(name, out string fullName2))
+                        return fullName2;
+                    replacements++;
+                }
                 return name;
             }
 
@@ -319,7 +397,7 @@ namespace SOR4Explorer
                         lastValue = value;
                         if (parent.Text == "Key" || parent.Text == "Name")
                             keyValue = value;
-                        if (parent.Text == "Text")
+                        if (parent.Text == "Text" || parent.Text == "Texture")
                             altValue = value;
                     }
                 }
